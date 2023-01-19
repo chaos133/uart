@@ -1,0 +1,100 @@
+
+#include "uart.h"
+#include "board.h"
+//(MDR_UART2->FR & (1 << 6)); СЧИТАТЬ ОДИН ОПРЕДЕЛЁННЫЙ БИТ
+//(MDR_UART2->FR & ((1 << 4) | (1 << 6))); СЧИТАТЬ ДВА БИТА СРАЗУ
+//volatile MDR_UART_TypeDef *uart = NULL;
+//		for(volatile uint16_t counter = 0; counter < n; counter++)
+//		{
+//			MDR_PORTF->RXTX ^= 1;		// Инвертирование первого байта порта вывода каждый такт
+//		}
+//		MDR_PORTF->RXTX ^= 1 << 1;	// Инвертирование второго байта порта вывода каждые 7 тактов
+
+/** 
+	*	@brief Функция инициализации необходимого UART на заданной частоте
+	*	@details
+	*
+	*	@param[in,out]	uart		что обозначает 
+	*
+	*	@return
+	*	@retaval 1 - 
+	*
+	*	@note 
+	*	@attention 
+	*/
+void uartInit(MDR_UART_TypeDef *uart, uint32_t baudrate)
+{
+	switch((uint32_t)uart)
+	{
+		case (uint32_t)MDR_UART1:			
+			MDR_RST_CLK->PER_CLOCK |= (1 << RST_CLK_PCLK_UART1_Pos);		// Разрешение тактирование модуля UART2
+			MDR_RST_CLK->UART_CLOCK 	&= ~RST_CLK_UART_CLOCK_UART1_BRG_Msk;
+			/* Если стартовая тактовая частота UART_CLK больше 10 МГц, то UART не запускается*/ 		
+			MDR_RST_CLK->UART_CLOCK 	|= 7 << RST_CLK_UART_CLOCK_UART1_BRG_Pos;	// Установка тактовой частоты на 625KГц.
+			MDR_RST_CLK->UART_CLOCK 	|= RST_CLK_UART_CLOCK_UART1_CLK_EN; // Разрешение тактовой частоты на UART2
+		break;
+		
+		case (uint32_t)MDR_UART2:	
+			MDR_RST_CLK->PER_CLOCK |= (1 << RST_CLK_PCLK_UART2_Pos);		// Разрешение тактирование модуля UART2
+			MDR_RST_CLK->UART_CLOCK 	&= ~RST_CLK_UART_CLOCK_UART2_BRG_Msk;
+			/* Если стартовая тактовая частота UART_CLK больше 10 МГц, то UART не запускается*/
+			MDR_RST_CLK->UART_CLOCK 	|= 7 << RST_CLK_UART_CLOCK_UART2_BRG_Pos;	// Установка тактовой частоты на 625KГц.
+			MDR_RST_CLK->UART_CLOCK 	|= RST_CLK_UART_CLOCK_UART2_CLK_EN; // Разрешение тактовой частоты на UART2
+		break;
+	}
+	uart->LCR_H 				= 3 << UART_LCR_H_WLEN_Pos;
+	uart->CR 					 	&= 0x0038u;
+	uart->CR 						|= (1 << UART_CR_UARTEN_Pos) | (1 << UART_CR_TXE_Pos) | (1 << UART_CR_RXE_Pos);
+	uart->IBRD 					= (SYS_CLK) / (16 * baudrate);
+	uart->FBRD 					= (SYS_CLK * 64 + 32) / (16 * baudrate);
+	
+	switch((uint32_t)uart)
+	{
+		case (uint32_t)MDR_UART1:	
+			MDR_RST_CLK->UART_CLOCK 	&= ~(7 <<  RST_CLK_UART_CLOCK_UART1_BRG_Pos);	// Установка тактовой частоты на 80MГц.
+		break;
+		
+		case (uint32_t)MDR_UART2:	
+			MDR_RST_CLK->UART_CLOCK 	&= ~(7 <<  RST_CLK_UART_CLOCK_UART2_BRG_Pos);	// Установка тактовой частоты на 80MГц.
+		break;
+	}
+		
+}
+
+/** Функция вывода одного байта информации на заданный UART */
+uint8_t uartByteWrite(MDR_UART_TypeDef *uart, uint8_t byte)
+{
+	uint8_t result = 0;
+	if(uart->FR & (UART_FR_TXFE))
+	{
+		uart->DR = byte;
+	}
+	return result;
+}
+
+
+/* Функция вывода любого количества информации на заданный UART */
+void uartByteArrayWrite(MDR_UART_TypeDef *uart, void *data, uint32_t size)
+{
+	uint8_t *src = data;
+	for(uint32_t count = 0; count < size; count++)
+	{
+		while(uart->FR & UART_FR_TXFF)
+		{
+		}
+		uart->DR = src[count];
+	}
+}
+
+
+/** Функция считывания информации, поступающей на заданный UART */
+uint8_t uartByteRead(MDR_UART_TypeDef *uart)
+{
+	uint8_t result = 0;
+	if(uart->FR & (UART_FR_RXFF))
+	{
+		result = uart->DR;
+	}
+	return result;
+}
+
